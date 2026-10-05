@@ -189,6 +189,77 @@ st.set_page_config(
     layout="centered",
 )
 
+# Fond d'écran et styles globaux
+st.markdown(
+    """
+    <style>
+        /* Fond général de l'app */
+        .stApp {
+            background: linear-gradient(135deg, #e8f5e9 0%, #f1f8e9 50%, #e3f2fd 100%);
+            background-attachment: fixed;
+        }
+
+        /* Bloc de contenu principal */
+        .block-container {
+            background: rgba(255, 255, 255, 0.88);
+            border-radius: 18px;
+            padding: 2rem 2.5rem !important;
+            box-shadow: 0 8px 32px rgba(23, 107, 58, 0.12);
+            backdrop-filter: blur(6px);
+        }
+
+        /* Texte général */
+        html, body, [class*="css"] {
+            font-family: Arial, Helvetica, sans-serif;
+            color: #1a1a1a;
+        }
+
+        /* Labels des selectbox */
+        label {
+            font-weight: bold !important;
+            color: #176b3a !important;
+        }
+
+        /* Bouton principal */
+        .stButton > button {
+            background-color: #176b3a !important;
+            color: white !important;
+            font-size: 16px !important;
+            font-weight: bold !important;
+            border-radius: 10px !important;
+            border: none !important;
+            padding: 12px 0 !important;
+            transition: background 0.2s;
+        }
+
+        .stButton > button:hover {
+            background-color: #0f512b !important;
+        }
+
+        /* Tableau résultat */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.07);
+        }
+
+        th, td {
+            padding: 12px 16px;
+            text-align: left;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 # En-tête
 st.markdown(
     """
