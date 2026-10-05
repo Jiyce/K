@@ -1,31 +1,20 @@
 """
 PLUS COURT CHEMIN ENTRE VILLES DU CAMEROUN
-Application web Flask utilisant l'algorithme de Dijkstra.
+Application Streamlit utilisant l'algorithme de Dijkstra.
 
 Lancement local :
     pip install -r requirements.txt
-    python projet.py
-
-Puis ouvrir :
-    http://127.0.0.1:5000
-
-Pour le déploiement en ligne (Render, Railway, etc.) :
-    gunicorn projet:app
+    streamlit run projet.py
 """
 
 import heapq
-from pathlib import Path
+import io
 
-from flask import Flask, render_template, request
 import matplotlib
-
-# Backend sans interface graphique : indispensable sur un serveur en ligne.
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import networkx as nx
-
-
-app = Flask(__name__)
+import streamlit as st
 
 # -------------------------------------------------------------------
 # 1. DONNÉES DU RÉSEAU ROUTIER
@@ -54,34 +43,35 @@ ROUTES = [
 ]
 
 POSITIONS = {
-    "Yaoundé": (11.52, 3.87),
-    "Douala": (9.70, 4.05),
-    "Ebolowa": (11.15, 2.92),
-    "Bertoua": (13.68, 4.58),
-    "Bafoussam": (10.42, 5.48),
-    "Ngaoundéré": (13.58, 7.32),
-    "Buea": (9.24, 4.16),
-    "Limbe": (9.21, 4.02),
-    "Edéa": (10.13, 3.80),
-    "Nkongsamba": (9.93, 4.95),
-    "Kribi": (9.91, 2.94),
-    "Bamenda": (10.17, 5.96),
-    "Dschang": (10.05, 5.45),
-    "Foumban": (10.90, 5.73),
-    "Garoua": (13.40, 9.30),
-    "Maroua": (14.32, 10.59),
-    "Garoua-Boulaï": (14.55, 5.90),
+    "Yaoundé":        (11.52,  3.87),
+    "Douala":         ( 9.70,  4.05),
+    "Ebolowa":        (11.15,  2.92),
+    "Bertoua":        (13.68,  4.58),
+    "Bafoussam":      (10.42,  5.48),
+    "Ngaoundéré":     (13.58,  7.32),
+    "Buea":           ( 9.24,  4.16),
+    "Limbe":          ( 9.21,  4.02),
+    "Edéa":           (10.13,  3.80),
+    "Nkongsamba":     ( 9.93,  4.95),
+    "Kribi":          ( 9.91,  2.94),
+    "Bamenda":        (10.17,  5.96),
+    "Dschang":        (10.05,  5.45),
+    "Foumban":        (10.90,  5.73),
+    "Garoua":         (13.40,  9.30),
+    "Maroua":         (14.32, 10.59),
+    "Garoua-Boulaï":  (14.55,  5.90),
 }
 
+# -------------------------------------------------------------------
+# 2. LOGIQUE MÉTIER
+# -------------------------------------------------------------------
 
 def construire_graphe():
     """Construit le graphe d'adjacence à partir des routes."""
     graphe = {}
-
     for a, b, distance in ROUTES:
         graphe.setdefault(a, {})[b] = distance
         graphe.setdefault(b, {})[a] = distance
-
     return graphe
 
 
@@ -94,18 +84,11 @@ def dijkstra(graphe, depart, arrivee):
     ou :
         (None, None) si aucun chemin n'existe.
     """
-    if depart not in graphe:
-        raise ValueError(f"Ville de départ inconnue : {depart}")
-
-    if arrivee not in graphe:
-        raise ValueError(f"Ville d'arrivée inconnue : {arrivee}")
-
     distances = {sommet: float("inf") for sommet in graphe}
     distances[depart] = 0
 
     predecesseurs = {sommet: None for sommet in graphe}
     visites = set()
-
     file_priorite = [(0, depart)]
 
     while file_priorite:
@@ -113,7 +96,6 @@ def dijkstra(graphe, depart, arrivee):
 
         if sommet_actuel in visites:
             continue
-
         visites.add(sommet_actuel)
 
         if sommet_actuel == arrivee:
@@ -122,114 +104,58 @@ def dijkstra(graphe, depart, arrivee):
         for voisin, poids in graphe[sommet_actuel].items():
             if voisin in visites:
                 continue
-
             nouvelle_distance = distance_actuelle + poids
-
             if nouvelle_distance < distances[voisin]:
                 distances[voisin] = nouvelle_distance
                 predecesseurs[voisin] = sommet_actuel
-                heapq.heappush(
-                    file_priorite,
-                    (nouvelle_distance, voisin)
-                )
+                heapq.heappush(file_priorite, (nouvelle_distance, voisin))
 
     if distances[arrivee] == float("inf"):
         return None, None
 
     chemin = []
     sommet = arrivee
-
     while sommet is not None:
         chemin.append(sommet)
         sommet = predecesseurs[sommet]
-
     chemin.reverse()
 
     return distances[arrivee], chemin
 
 
-def visualiser(graphe, chemin, distance_totale, depart, arrivee):
+def visualiser(chemin, distance_totale, depart, arrivee):
     """
-    Génère une image du réseau et met en évidence le plus court chemin.
-
-    L'image est enregistrée dans le dossier static/ afin d'être
-    accessible par l'interface web.
+    Génère la figure du réseau routier et retourne un objet BytesIO
+    prêt à être affiché par Streamlit.
     """
     G = nx.Graph()
-
     for a, b, distance in ROUTES:
         G.add_edge(a, b, weight=distance)
 
-    pos = {
-        ville: POSITIONS[ville]
-        for ville in G.nodes
-        if ville in POSITIONS
-    }
+    pos = {ville: POSITIONS[ville] for ville in G.nodes if ville in POSITIONS}
 
-    plt.figure(figsize=(11, 9))
+    fig, ax = plt.subplots(figsize=(12, 9))
 
     # Réseau complet
-    nx.draw_networkx_edges(
-        G,
-        pos,
-        edge_color="lightgray",
-        width=1.5
-    )
-
-    nx.draw_networkx_nodes(
-        G,
-        pos,
-        node_color="lightblue",
-        node_size=600,
-        edgecolors="black"
-    )
-
-    nx.draw_networkx_labels(
-        G,
-        pos,
-        font_size=8
-    )
-
-    # Distances sur les routes
-    labels_aretes = nx.get_edge_attributes(G, "weight")
-
-    nx.draw_networkx_edge_labels(
-        G,
-        pos,
-        edge_labels=labels_aretes,
-        font_size=7
-    )
+    nx.draw_networkx_edges(G, pos, edge_color="lightgray", width=1.5, ax=ax)
+    nx.draw_networkx_nodes(G, pos, node_color="lightblue", node_size=600,
+                           edgecolors="black", ax=ax)
+    nx.draw_networkx_labels(G, pos, font_size=8, ax=ax)
+    nx.draw_networkx_edge_labels(G, pos,
+                                 edge_labels=nx.get_edge_attributes(G, "weight"),
+                                 font_size=7, ax=ax)
 
     # Chemin trouvé
     if chemin and len(chemin) > 1:
         aretes_chemin = list(zip(chemin[:-1], chemin[1:]))
-
-        nx.draw_networkx_edges(
-            G,
-            pos,
-            edgelist=aretes_chemin,
-            edge_color="red",
-            width=3
-        )
-
-        nx.draw_networkx_nodes(
-            G,
-            pos,
-            nodelist=chemin,
-            node_color="orange",
-            node_size=650,
-            edgecolors="black"
-        )
-
-        nx.draw_networkx_nodes(
-            G,
-            pos,
-            nodelist=[depart, arrivee],
-            node_color="limegreen",
-            node_size=750,
-            edgecolors="black"
-        )
-
+        nx.draw_networkx_edges(G, pos, edgelist=aretes_chemin,
+                               edge_color="red", width=3, ax=ax)
+        nx.draw_networkx_nodes(G, pos, nodelist=chemin,
+                               node_color="orange", node_size=650,
+                               edgecolors="black", ax=ax)
+        nx.draw_networkx_nodes(G, pos, nodelist=[depart, arrivee],
+                               node_color="limegreen", node_size=750,
+                               edgecolors="black", ax=ax)
         titre = (
             f"Plus court chemin : {depart} → {arrivee}\n"
             f"Trajet : {' → '.join(chemin)}\n"
@@ -238,139 +164,108 @@ def visualiser(graphe, chemin, distance_totale, depart, arrivee):
     else:
         titre = f"Aucun chemin trouvé entre {depart} et {arrivee}"
 
-    plt.title(titre, fontsize=11)
-    plt.axis("off")
+    ax.set_title(titre, fontsize=11)
+    ax.axis("off")
     plt.tight_layout()
 
-    static_dir = Path(app.root_path) / "static"
-    static_dir.mkdir(exist_ok=True)
+    buf = io.BytesIO()
+    plt.savefig(buf, format="png", dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    buf.seek(0)
+    return buf
 
-    image_path = static_dir / "resultat_plus_court_chemin.png"
 
-    plt.savefig(
-        image_path,
-        dpi=150,
-        bbox_inches="tight"
-    )
-
-    plt.close()
-
-    return "resultat_plus_court_chemin.png"
-
+# -------------------------------------------------------------------
+# 3. INTERFACE STREAMLIT
+# -------------------------------------------------------------------
 
 GRAPHE = construire_graphe()
 VILLES = sorted(GRAPHE.keys())
 
+# Configuration de la page
+st.set_page_config(
+    page_title="Plus court chemin – Cameroun",
+    page_icon="🗺️",
+    layout="centered",
+)
 
-# -------------------------------------------------------------------
-# 2. ROUTES FLASK
-# -------------------------------------------------------------------
+# En-tête
+st.markdown(
+    """
+    <div style="background:#176b3a;padding:28px 20px;border-radius:12px;
+                text-align:center;color:white;margin-bottom:24px">
+        <h1 style="margin:0;font-size:26px">
+            🗺️ Plus court chemin entre les villes du Cameroun
+        </h1>
+        <p style="margin:8px 0 0 0;font-size:15px">
+            Recherche d'itinéraire avec l'algorithme de Dijkstra
+        </p>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
-@app.route("/", methods=["GET"])
-def accueil():
-    """Affiche l'interface principale."""
-    return render_template(
-        "index.html",
-        villes=VILLES,
-        depart="",
-        arrivee="",
-        distance=None,
-        chemin=None,
-        erreur=None,
-        image=None
+st.subheader("Calculer un itinéraire")
+st.write(
+    "Choisissez une ville de départ et une ville d'arrivée. "
+    "Le programme calculera automatiquement le plus court chemin."
+)
+
+# Formulaire
+col1, col2 = st.columns(2)
+
+with col1:
+    depart = st.selectbox(
+        "🚩 Ville de départ",
+        options=["-- Choisir une ville --"] + VILLES,
+        index=0,
     )
 
+with col2:
+    arrivee = st.selectbox(
+        "🏁 Ville d'arrivée",
+        options=["-- Choisir une ville --"] + VILLES,
+        index=0,
+    )
 
-@app.route("/calculer", methods=["POST"])
-def calculer():
-    """Récupère les villes du formulaire et lance Dijkstra."""
-    depart = request.form.get("depart", "").strip()
-    arrivee = request.form.get("arrivee", "").strip()
+calculer = st.button("Calculer le plus court chemin", use_container_width=True)
 
-    if not depart or not arrivee:
-        return render_template(
-            "index.html",
-            villes=VILLES,
-            depart=depart,
-            arrivee=arrivee,
-            distance=None,
-            chemin=None,
-            erreur="Veuillez sélectionner une ville de départ et une ville d'arrivée.",
-            image=None
-        )
+# Calcul et affichage du résultat
+if calculer:
+    if depart == "-- Choisir une ville --" or arrivee == "-- Choisir une ville --":
+        st.error("Veuillez sélectionner une ville de départ et une ville d'arrivée.")
 
-    if depart == arrivee:
-        return render_template(
-            "index.html",
-            villes=VILLES,
-            depart=depart,
-            arrivee=arrivee,
-            distance=0,
-            chemin=[depart],
-            erreur=None,
-            image=None
-        )
+    elif depart == arrivee:
+        st.info(f"Vous êtes déjà à **{depart}** — distance : **0 km**.")
 
-    try:
-        distance_totale, chemin = dijkstra(
-            GRAPHE,
-            depart,
-            arrivee
-        )
+    else:
+        distance_totale, chemin = dijkstra(GRAPHE, depart, arrivee)
 
         if chemin is None:
-            return render_template(
-                "index.html",
-                villes=VILLES,
-                depart=depart,
-                arrivee=arrivee,
-                distance=None,
-                chemin=None,
-                erreur=f"Aucun chemin trouvé entre {depart} et {arrivee}.",
-                image=None
+            st.error(f"Aucun chemin trouvé entre **{depart}** et **{arrivee}**.")
+        else:
+            # Résultat textuel
+            st.success("Itinéraire calculé avec succès !")
+
+            st.markdown(
+                f"""
+                | | |
+                |---|---|
+                | **Ville de départ** | {depart} |
+                | **Ville d'arrivée** | {arrivee} |
+                | **Trajet optimal** | {" → ".join(chemin)} |
+                | **Distance totale** | **{distance_totale} km** |
+                """
             )
 
-        image = visualiser(
-            GRAPHE,
-            chemin,
-            distance_totale,
-            depart,
-            arrivee
-        )
+            # Carte
+            st.subheader("Visualisation du réseau routier")
+            buf = visualiser(chemin, distance_totale, depart, arrivee)
+            st.image(buf, use_container_width=True)
 
-        return render_template(
-            "index.html",
-            villes=VILLES,
-            depart=depart,
-            arrivee=arrivee,
-            distance=distance_totale,
-            chemin=chemin,
-            erreur=None,
-            image=image
-        )
-
-    except ValueError as erreur:
-        return render_template(
-            "index.html",
-            villes=VILLES,
-            depart=depart,
-            arrivee=arrivee,
-            distance=None,
-            chemin=None,
-            erreur=str(erreur),
-            image=None
-        )
-
-
-if __name__ == "__main__":
-    # Le port fourni par la plateforme de déploiement est utilisé
-    # automatiquement lorsqu'il existe.
-    import os
-
-    port = int(os.environ.get("PORT", 5000))
-
-    app.run(
-        host="0.0.0.0",
-        port=port,
-        debug=False
-    )
+# Pied de page
+st.markdown(
+    "<p style='text-align:center;color:#999;font-size:13px;margin-top:40px'>"
+    "Projet pédagogique — Algorithme de Dijkstra</p>",
+    unsafe_allow_html=True,
+)
